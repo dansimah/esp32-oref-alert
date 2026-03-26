@@ -9,6 +9,7 @@
 #include <ESPmDNS.h>
 #include <LittleFS.h>
 #include <DNSServer.h>
+#include <nvs_flash.h>
 
 // ── API Configuration ────────────────────────────────────────────────────────
 static const char* ALERT_URL = "https://www.oref.org.il/warningMessages/alert/Alerts.json";
@@ -81,8 +82,6 @@ void handleCaptivePortal();
 bool connectSTA(const char* ssid, const char* pass);
 void startAP();
 void onWiFiConnected();
-
-#include <esp_system.h>
 
 // ── NVS Configuration ────────────────────────────────────────────────────────
 void loadConfig() {
@@ -511,6 +510,14 @@ void setup() {
     Serial.printf("[boot] Chip: %s, Flash: %d MB, Free heap: %d\n",
                   ESP.getChipModel(), ESP.getFlashChipSize() / 1048576, ESP.getFreeHeap());
     Serial.printf("[boot] Reset reason: %d\n", esp_reset_reason());
+
+    esp_err_t nvsErr = nvs_flash_init();
+    if (nvsErr == ESP_ERR_NVS_NO_FREE_PAGES || nvsErr == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        Serial.println("[boot] NVS corrupted, erasing and re-initializing...");
+        nvs_flash_erase();
+        nvs_flash_init();
+    }
+    Serial.printf("[boot] NVS init: %s\n", esp_err_to_name(nvsErr));
 
     Serial.print("[boot] LittleFS... ");
     if (!LittleFS.begin(true)) {
