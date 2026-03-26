@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESP32 Oref Alert LED - Install</title>
+<script type="module" src="https://unpkg.com/esp-web-tools@9.0.3/dist/web/install-button.js?module"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#1a1a2e;color:#e0e0e0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.container{max-width:520px;width:100%;text-align:center}
+h1{font-size:2rem;margin-bottom:8px;color:#fff}
+.subtitle{color:#888;margin-bottom:32px;font-size:1rem}
+.card{background:#16213e;border-radius:12px;padding:32px;border:1px solid #0f3460;margin-bottom:24px}
+esp-web-install-button{display:block;margin:24px auto}
+esp-web-install-button button{
+  background:#e94560;color:#fff;border:none;border-radius:8px;
+  padding:14px 36px;font-size:1.1rem;font-weight:600;cursor:pointer;
+  transition:opacity 0.2s}
+esp-web-install-button button:hover{opacity:0.85}
+.steps{text-align:right;direction:rtl;margin-top:20px}
+.steps h3{margin-bottom:12px;color:#e94560;font-size:1rem}
+.steps ol{padding-right:20px;line-height:2}
+.lang{display:flex;gap:16px;justify-content:center;margin-bottom:24px}
+.lang button{background:none;border:1px solid #0f3460;color:#aaa;padding:6px 16px;border-radius:6px;cursor:pointer;font-size:0.85rem}
+.lang button.active{border-color:#e94560;color:#fff}
+.section{display:none}
+.section.active{display:block}
+.note{margin-top:16px;font-size:0.85rem;color:#888}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>ESP32 Oref Alert LED</h1>
+  <p class="subtitle">Pikud Haoref Standalone Alert Sensor</p>
+
+  <div class="card">
+    <div class="lang">
+      <button class="active" onclick="switchLang('en',this)">English</button>
+      <button onclick="switchLang('he',this)">עברית</button>
+    </div>
+
+    <div id="en" class="section active">
+      <p>Flash the firmware to your ESP32-S3 directly from the browser.<br>
+      Connect via USB and click the button below.</p>
+
+      <esp-web-install-button manifest="manifest.json">
+        <button slot="activate">Install Firmware</button>
+        <span slot="unsupported">Your browser does not support Web Serial.<br>Use Chrome or Edge.</span>
+        <span slot="not-allowed">Serial access denied.</span>
+      </esp-web-install-button>
+
+      <div class="steps" style="text-align:left;direction:ltr">
+        <h3>After Installation</h3>
+        <ol>
+          <li>The Wi-Fi setup dialog will appear -- enter your network credentials</li>
+          <li>Open <strong>http://oref-alert.local/</strong> to configure the alert zone</li>
+          <li>The LED turns <span style="color:#00ff88">green</span> when monitoring</li>
+        </ol>
+      </div>
+    </div>
+
+    <div id="he" class="section">
+      <p>התקינו את הקושחה על ה-ESP32-S3 ישירות מהדפדפן.<br>
+      חברו בכבל USB ולחצו על הכפתור.</p>
+
+      <esp-web-install-button manifest="manifest.json">
+        <button slot="activate">התקן קושחה</button>
+        <span slot="unsupported">הדפדפן לא תומך ב-Web Serial.<br>השתמשו ב-Chrome או Edge.</span>
+        <span slot="not-allowed">גישה לחיבור טורי נדחתה.</span>
+      </esp-web-install-button>
+
+      <div class="steps">
+        <h3>אחרי ההתקנה</h3>
+        <ol>
+          <li>יופיע חלון הגדרת Wi-Fi -- הכניסו את פרטי הרשת</li>
+          <li>פתחו <strong>http://oref-alert.local/</strong> כדי להגדיר את אזור ההתרעה</li>
+          <li>הנורית תידלק <span style="color:#00ff88">ירוק</span> כשהמערכת מנטרת</li>
+        </ol>
+      </div>
+    </div>
+
+    <p class="note">Requires Chrome or Edge on desktop. ESP32-S3 with USB.</p>
+  </div>
+</div>
+
+<script>
+function switchLang(lang, btn) {
+  document.querySelectorAll('.section').forEach(function(s) { s.classList.remove('active'); });
+  document.getElementById(lang).classList.add('active');
+  document.querySelectorAll('.lang button').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESP32 Oref Alert LED</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#1a1a2e;color:#e0e0e0;min-height:100vh;display:flex;justify-content:center;padding:20px}
+.container{max-width:440px;width:100%}
+h1{text-align:center;color:#fff;margin-bottom:8px;font-size:1.5rem}
+.subtitle{text-align:center;color:#888;margin-bottom:24px;font-size:0.9rem}
+.card{background:#16213e;border-radius:12px;padding:20px;margin-bottom:16px;border:1px solid #0f3460}
+.card h2{font-size:1.1rem;margin-bottom:16px;color:#e94560}
+label{display:block;margin-bottom:4px;font-size:0.85rem;color:#aaa}
+input[type="text"],input[type="password"],input[type="number"],select{width:100%;padding:10px 12px;border:1px solid #0f3460;border-radius:8px;background:#1a1a2e;color:#fff;font-size:1rem;margin-bottom:14px;direction:rtl}
+input:focus,select:focus{outline:none;border-color:#e94560}
+.btn{display:inline-block;padding:10px 20px;border:none;border-radius:8px;font-size:1rem;cursor:pointer;font-weight:600;transition:opacity 0.2s}
+.btn-primary{background:#e94560;color:#fff;width:100%}
+.btn-wifi{background:#0088ff;color:#fff;width:100%}
+.btn-test{background:#0f3460;color:#fff;width:100%;margin-top:8px}
+.btn:hover{opacity:0.85}
+.btn:active{opacity:0.7}
+.status-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.status-item{background:#1a1a2e;border-radius:8px;padding:10px;text-align:center}
+.status-item .label{font-size:0.75rem;color:#888;margin-bottom:4px}
+.status-item .value{font-size:1rem;font-weight:600}
+.state-ok{color:#00ff88}
+.state-pre_alert{color:#ff8c00}
+.state-alert{color:#ff0000}
+.state-connecting,.state-ap_mode{color:#0088ff}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#00c853;color:#fff;padding:10px 24px;border-radius:8px;font-weight:600;opacity:0;transition:opacity 0.3s;pointer-events:none;z-index:10}
+.toast.show{opacity:1}
+.toast.error{background:#e94560}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>ESP32 Oref Alert LED</h1>
+  <p class="subtitle">Pikud Haoref Alert Sensor</p>
+
+  <div class="card hidden" id="wifi-card">
+    <h2>WiFi Connection</h2>
+    <label for="wifi-ssid">Network Name (SSID)</label>
+    <input type="text" id="wifi-ssid" dir="ltr" placeholder="Enter WiFi name">
+
+    <label for="wifi-pass">Password</label>
+    <input type="password" id="wifi-pass" dir="ltr" placeholder="Enter WiFi password">
+
+    <button class="btn btn-wifi" onclick="connectWifi()">Connect to WiFi</button>
+  </div>
+
+  <div class="card">
+    <h2>Settings</h2>
+    <label for="zone">Alert Zone</label>
+    <input type="text" id="zone" list="zone-list" placeholder="Search area..." autocomplete="off">
+    <datalist id="zone-list"></datalist>
+
+    <label for="pin">LED GPIO Pin</label>
+    <input type="number" id="pin" min="0" max="48" value="48">
+
+    <label for="tts">Time to Shelter (seconds)</label>
+    <select id="tts">
+      <option value="0">0</option>
+      <option value="15">15</option>
+      <option value="30">30</option>
+      <option value="45">45</option>
+      <option value="60">60</option>
+      <option value="90" selected>90</option>
+      <option value="180">180</option>
+    </select>
+
+    <button class="btn btn-primary" onclick="saveConfig()">Save</button>
+    <button class="btn btn-test" onclick="testAlert()">Test Alert</button>
+  </div>
+
+  <div class="card">
+    <h2>Status</h2>
+    <div class="status-grid">
+      <div class="status-item">
+        <div class="label">State</div>
+        <div class="value" id="st-state">--</div>
+      </div>
+      <div class="status-item">
+        <div class="label">RSSI</div>
+        <div class="value" id="st-rssi">--</div>
+      </div>
+      <div class="status-item">
+        <div class="label">IP</div>
+        <div class="value" id="st-ip">--</div>
+      </div>
+      <div class="status-item">
+        <div class="label">Uptime</div>
+        <div class="value" id="st-uptime">--</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+function toast(msg, error) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (error ? ' error' : '');
+  setTimeout(function() { t.className = 'toast'; }, 2500);
+}
+
+function connectWifi() {
+  var ssid = document.getElementById('wifi-ssid').value;
+  var pass = document.getElementById('wifi-pass').value;
+  if (!ssid) { toast('Enter SSID', true); return; }
+  fetch('/api/wifi', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ssid: ssid, password: pass})
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d.ok) toast('Connecting... Device will restart.');
+    else toast(d.error || 'Error', true);
+  }).catch(function() { toast('Connection error', true); });
+}
+
+function loadConfig() {
+  fetch('/api/config').then(function(r) { return r.json(); }).then(function(d) {
+    document.getElementById('zone').value = d.zone_name || '';
+    document.getElementById('pin').value = d.led_pin;
+    document.getElementById('tts').value = String(d.tts_seconds);
+  }).catch(function() {});
+}
+
+function saveConfig() {
+  var body = JSON.stringify({
+    zone_name: document.getElementById('zone').value,
+    led_pin: parseInt(document.getElementById('pin').value),
+    tts_seconds: parseInt(document.getElementById('tts').value)
+  });
+  fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body:body})
+    .then(function(r) { return r.json(); })
+    .then(function(d) { toast(d.ok ? 'Saved' : 'Error', !d.ok); })
+    .catch(function() { toast('Connection error', true); });
+}
+
+function testAlert() {
+  fetch('/api/test', {method:'POST'})
+    .then(function(r) { return r.json(); })
+    .then(function() { toast('Test running...'); })
+    .catch(function() { toast('Connection error', true); });
+}
+
+function loadStatus() {
+  fetch('/api/status').then(function(r) { return r.json(); }).then(function(d) {
+    var stateEl = document.getElementById('st-state');
+    var stateMap = {ok:'OK', pre_alert:'PRE-ALERT', alert:'ALERT', connecting:'CONNECTING', ap_mode:'AP MODE'};
+    stateEl.textContent = stateMap[d.state] || d.state;
+    stateEl.className = 'value state-' + d.state;
+    document.getElementById('st-rssi').textContent = (d.rssi || 0) + ' dBm';
+    document.getElementById('st-ip').textContent = d.ip || '--';
+    var sec = d.uptime_sec;
+    var h = Math.floor(sec/3600);
+    var m = Math.floor((sec%3600)/60);
+    document.getElementById('st-uptime').textContent = h + 'h ' + m + 'm';
+    if (d.ap_mode) {
+      document.getElementById('wifi-card').classList.remove('hidden');
+    } else {
+      document.getElementById('wifi-card').classList.add('hidden');
+    }
+  }).catch(function() {});
+}
+
+function loadAreas() {
+  fetch('/api/areas').then(function(r) { return r.json(); }).then(function(areas) {
+    var dl = document.getElementById('zone-list');
+    dl.innerHTML = '';
+    for (var i = 0; i < areas.length; i++) {
+      var opt = document.createElement('option');
+      opt.value = areas[i];
+      dl.appendChild(opt);
+    }
+  }).catch(function() {});
+}
+
+loadAreas();
+loadConfig();
+loadStatus();
+setInterval(loadStatus, 3000);
+</script>
+</body>
+</html>

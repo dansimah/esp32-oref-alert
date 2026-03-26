@@ -1,0 +1,14 @@
+{
+  "name": "ESP32 Oref Alert LED",
+  "version": "1.0.0",
+  "improv": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32-S3",
+      "improv": true,
+      "parts": [
+        { "path": "firmware_esp32_s3.bin", "offset": 0 }
+      ]
+    }
+  ]
+}
