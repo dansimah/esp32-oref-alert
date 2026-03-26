@@ -19,6 +19,10 @@ input:focus,select:focus{outline:none;border-color:#e94560}
 .btn-primary{background:#e94560;color:#fff;width:100%}
 .btn-wifi{background:#0088ff;color:#fff;width:100%}
 .btn-test{background:#0f3460;color:#fff;width:100%;margin-top:8px}
+.btn-danger{background:#8b0000;color:#fff;width:100%;margin-top:8px}
+.range-wrap{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.range-wrap input[type="range"]{flex:1;accent-color:#e94560}
+.range-val{min-width:36px;text-align:center;font-weight:600;font-size:1rem}
 .btn:hover{opacity:0.85}
 .btn:active{opacity:0.7}
 .status-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -60,6 +64,12 @@ input:focus,select:focus{outline:none;border-color:#e94560}
     <label for="pin">LED GPIO Pin</label>
     <input type="number" id="pin" min="0" max="48" value="48">
 
+    <label for="brightness">LED Brightness</label>
+    <div class="range-wrap">
+      <input type="range" id="brightness" min="1" max="100" value="12" oninput="document.getElementById('bri-val').textContent=this.value+'%'">
+      <span class="range-val" id="bri-val">12%</span>
+    </div>
+
     <label for="tts">Time to Shelter (seconds)</label>
     <select id="tts">
       <option value="0">0</option>
@@ -73,6 +83,7 @@ input:focus,select:focus{outline:none;border-color:#e94560}
 
     <button class="btn btn-primary" onclick="saveConfig()">Save</button>
     <button class="btn btn-test" onclick="testAlert()">Test Alert</button>
+    <button class="btn btn-danger" onclick="resetAP()">Reset to AP Mode</button>
   </div>
 
   <div class="card">
@@ -125,6 +136,9 @@ function loadConfig() {
     document.getElementById('zone').value = d.zone_name || '';
     document.getElementById('pin').value = d.led_pin;
     document.getElementById('tts').value = String(d.tts_seconds);
+    var bri = d.brightness || 12;
+    document.getElementById('brightness').value = bri;
+    document.getElementById('bri-val').textContent = bri + '%';
   }).catch(function() {});
 }
 
@@ -132,7 +146,8 @@ function saveConfig() {
   var body = JSON.stringify({
     zone_name: document.getElementById('zone').value,
     led_pin: parseInt(document.getElementById('pin').value),
-    tts_seconds: parseInt(document.getElementById('tts').value)
+    tts_seconds: parseInt(document.getElementById('tts').value),
+    brightness: parseInt(document.getElementById('brightness').value)
   });
   fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body:body})
     .then(function(r) { return r.json(); })
@@ -177,6 +192,17 @@ function loadAreas() {
       dl.appendChild(opt);
     }
   }).catch(function() {});
+}
+
+function resetAP() {
+  if (!confirm('This will erase WiFi credentials and restart in AP mode. Continue?')) return;
+  fetch('/api/reset', {method:'POST'})
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok) toast('Resetting to AP mode...');
+      else toast('Error', true);
+    })
+    .catch(function() { toast('Connection error', true); });
 }
 
 loadAreas();

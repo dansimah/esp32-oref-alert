@@ -47,6 +47,7 @@ DNSServer dnsServer;
 String zoneName;
 int ledPin;
 int ttsSeconds;
+int brightness;
 
 DeviceState currentState = STATE_AP_MODE;
 unsigned long lastPollTime = 0;
@@ -75,6 +76,7 @@ void handleGetStatus();
 void handlePostTest();
 void handleGetAreas();
 void handlePostWifi();
+void handlePostReset();
 void handleCaptivePortal();
 bool connectSTA(const char* ssid, const char* pass);
 void startAP();
@@ -88,11 +90,13 @@ void loadConfig() {
         zoneName = prefs.getString("zone_name", "\xD7\xAA\xD7\x9C \xD7\x90\xD7\x91\xD7\x99\xD7\x91 - \xD7\x99\xD7\xA4\xD7\x95 1");
         ledPin = prefs.getInt("led_pin", 48);
         ttsSeconds = prefs.getInt("tts_seconds", 90);
+        brightness = prefs.getInt("brightness", 12);
         prefs.end();
     } else {
         zoneName = "\xD7\xAA\xD7\x9C \xD7\x90\xD7\x91\xD7\x99\xD7\x91 - \xD7\x99\xD7\xA4\xD7\x95 1";
         ledPin = 48;
         ttsSeconds = 90;
+        brightness = 12;
     }
 }
 
@@ -101,6 +105,7 @@ void saveConfig() {
     prefs.putString("zone_name", zoneName);
     prefs.putInt("led_pin", ledPin);
     prefs.putInt("tts_seconds", ttsSeconds);
+    prefs.putInt("brightness", brightness);
     prefs.end();
 }
 
@@ -113,7 +118,7 @@ void initLed() {
     }
     strip = new Adafruit_NeoPixel(1, ledPin, NEO_GRB + NEO_KHZ800);
     strip->begin();
-    strip->setBrightness(30);
+    strip->setBrightness(map(brightness, 1, 100, 1, 255));
     strip->show();
 }
 
@@ -310,6 +315,7 @@ void handleGetConfig() {
     doc["zone_name"] = zoneName;
     doc["led_pin"] = ledPin;
     doc["tts_seconds"] = ttsSeconds;
+    doc["brightness"] = brightness;
     String json;
     serializeJson(doc, json);
     server.send(200, "application/json", json);
@@ -328,7 +334,7 @@ void handlePostConfig() {
         return;
     }
 
-    bool pinChanged = false;
+    bool needReinit = false;
 
     if (doc["zone_name"].is<const char*>()) {
         zoneName = doc["zone_name"].as<String>();
@@ -337,18 +343,28 @@ void handlePostConfig() {
         int newPin = doc["led_pin"].as<int>();
         if (newPin != ledPin) {
             ledPin = newPin;
-            pinChanged = true;
+            needReinit = true;
         }
     }
     if (doc["tts_seconds"].is<int>()) {
         ttsSeconds = doc["tts_seconds"].as<int>();
     }
+    if (doc["brightness"].is<int>()) {
+        int newBri = constrain(doc["brightness"].as<int>(), 1, 100);
+        if (newBri != brightness) {
+            brightness = newBri;
+            needReinit = true;
+        }
+    }
 
     saveConfig();
 
-    if (pinChanged) {
+    if (needReinit) {
         initLed();
         setLedColor(COLOR_GREEN);
+    } else if (strip) {
+        strip->setBrightness(map(brightness, 1, 100, 1, 255));
+        strip->show();
     }
 
     server.send(200, "application/json", "{\"ok\":true}");
@@ -432,6 +448,15 @@ void handlePostWifi() {
     esp_restart();
 }
 
+void handlePostReset() {
+    prefs.begin("wifi", false);
+    prefs.clear();
+    prefs.end();
+    server.send(200, "application/json", "{\"ok\":true,\"message\":\"WiFi cleared. Restarting to AP mode...\"}");
+    delay(1000);
+    esp_restart();
+}
+
 void handleCaptivePortal() {
     server.sendHeader("Location", "http://192.168.4.1/");
     server.send(302, "text/plain", "");
@@ -445,6 +470,7 @@ void setupWebServer() {
     server.on("/api/test", HTTP_POST, handlePostTest);
     server.on("/api/areas", HTTP_GET, handleGetAreas);
     server.on("/api/wifi", HTTP_POST, handlePostWifi);
+    server.on("/api/reset", HTTP_POST, handlePostReset);
     server.on("/generate_204", HTTP_GET, handleCaptivePortal);
     server.on("/fwlink", HTTP_GET, handleCaptivePortal);
     server.on("/connecttest.txt", HTTP_GET, handleCaptivePortal);
