@@ -27,8 +27,12 @@ static const uint32_t COLOR_GREEN  = 0x00FF00;
 static const uint32_t COLOR_ORANGE = 0xFF8C00;
 static const uint32_t COLOR_RED    = 0xFF0000;
 
-// ── Polling Interval ─────────────────────────────────────────────────────────
-static const unsigned long POLL_INTERVAL_MS = 2000;
+// ── Polling & Expiration (matching HACS oref_alert integration) ──────────────
+static const unsigned long POLL_ACTIVE_MS       = 2000;
+static const unsigned long POLL_IDLE_MS         = 20000;
+static const unsigned long IDLE_THRESHOLD_MS    = 10UL * 60 * 1000;
+static const unsigned long PRE_ALERT_EXPIRE_MS  = 20UL * 60 * 1000;
+static const unsigned long ALERT_EXPIRE_MS      = 180UL * 60 * 1000;
 
 // ── Device State ─────────────────────────────────────────────────────────────
 enum DeviceState {
@@ -52,6 +56,8 @@ int brightness;
 
 DeviceState currentState = STATE_AP_MODE;
 unsigned long lastPollTime = 0;
+unsigned long stateStartTime = 0;
+unsigned long lastActiveTime = 0;
 bool testRunning = false;
 unsigned long testStartTime = 0;
 bool wifiSetupDone = false;
@@ -67,6 +73,9 @@ void setLedColor(uint32_t color);
 void setLedOff();
 String fixAreaSpelling(const String& area);
 bool isAlertCategory(int cat);
+void setAlertState(DeviceState newState);
+void checkStateExpiration();
+unsigned long currentPollInterval();
 void pollAlertApi();
 void updateLedForState();
 void setupWebServer();
@@ -146,6 +155,43 @@ bool isAlertCategory(int cat) {
     return false;
 }
 
+void setAlertState(DeviceState newState) {
+    if (newState == STATE_PRE_ALERT && currentState == STATE_ALERT) return;
+
+    if (newState != currentState) {
+        currentState = newState;
+        stateStartTime = millis();
+    } else if (newState == STATE_PRE_ALERT || newState == STATE_ALERT) {
+        stateStartTime = millis();
+    }
+
+    if (newState == STATE_PRE_ALERT || newState == STATE_ALERT) {
+        lastActiveTime = millis();
+    }
+}
+
+void checkStateExpiration() {
+    if (currentState != STATE_PRE_ALERT && currentState != STATE_ALERT) return;
+
+    unsigned long elapsed = millis() - stateStartTime;
+    unsigned long limit = (currentState == STATE_PRE_ALERT)
+                          ? PRE_ALERT_EXPIRE_MS
+                          : ALERT_EXPIRE_MS;
+
+    if (elapsed >= limit) {
+        Serial.printf("[alert] %s expired after %lu s\n",
+                      currentState == STATE_PRE_ALERT ? "Pre-alert" : "Alert",
+                      elapsed / 1000);
+        currentState = STATE_OK;
+    }
+}
+
+unsigned long currentPollInterval() {
+    if (currentState == STATE_PRE_ALERT || currentState == STATE_ALERT) return POLL_ACTIVE_MS;
+    if (millis() - lastActiveTime < IDLE_THRESHOLD_MS) return POLL_ACTIVE_MS;
+    return POLL_IDLE_MS;
+}
+
 // ── WiFi (Arduino library) ───────────────────────────────────────────────────
 bool connectSTA(const char* ssid, const char* password) {
     Serial.printf("[wifi] Connecting to '%s'...\n", ssid);
@@ -178,7 +224,7 @@ void pollAlertApi() {
     if (WiFi.status() != WL_CONNECTED) return;
 
     unsigned long now = millis();
-    if (now - lastPollTime < POLL_INTERVAL_MS) return;
+    if (now - lastPollTime < currentPollInterval()) return;
     lastPollTime = now;
 
     WiFiClientSecure client;
@@ -230,27 +276,18 @@ void pollAlertApi() {
 
                 if (zoneFound) {
                     if (cat == RT_MESSAGE_CATEGORY && title.indexOf(PRE_ALERT_KEYWORD) >= 0) {
-                        currentState = STATE_PRE_ALERT;
+                        setAlertState(STATE_PRE_ALERT);
                     } else if (isAlertCategory(cat)) {
-                        currentState = STATE_ALERT;
+                        setAlertState(STATE_ALERT);
                     } else if (cat == RT_MESSAGE_CATEGORY) {
                         currentState = STATE_OK;
                     }
-                } else {
-                    if (currentState == STATE_ALERT || currentState == STATE_PRE_ALERT) {
-                        currentState = STATE_OK;
-                    }
                 }
-            } else {
-                if (currentState == STATE_ALERT || currentState == STATE_PRE_ALERT) {
-                    currentState = STATE_OK;
-                }
+                // Zone not in current broadcast — let expiration handle it
             }
-        } else {
-            if (currentState == STATE_ALERT || currentState == STATE_PRE_ALERT) {
-                currentState = STATE_OK;
-            }
+            // Unparseable JSON — let expiration handle it
         }
+        // Empty response — let expiration handle it
     }
 
     http.end();
@@ -582,6 +619,7 @@ void loop() {
             }
         }
 
+        checkStateExpiration();
         pollAlertApi();
     }
 
