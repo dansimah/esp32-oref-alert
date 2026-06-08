@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <title>ESP32 Oref Alert LED</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -33,6 +34,16 @@ input:focus,select:focus{outline:none;border-color:#e94560}
 .state-pre_alert{color:#ff8c00}
 .state-alert{color:#ff0000}
 .state-connecting,.state-ap_mode{color:#0088ff}
+.history-list{list-style:none;margin:0;padding:0}
+.history-item{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid #0f3460;font-size:0.85rem}
+.history-item:last-child{border-bottom:none;padding-bottom:0}
+.history-item:first-child{padding-top:0}
+.history-time{min-width:72px;color:#888;font-size:0.75rem;direction:ltr;text-align:left;flex-shrink:0}
+.history-title{flex:1;line-height:1.35}
+.history-type-pre_alert .history-title{color:#ff8c00}
+.history-type-alert .history-title{color:#ff4444}
+.history-type-end .history-title{color:#00ff88}
+.history-empty{color:#888;font-size:0.85rem;text-align:center;padding:8px 0}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#00c853;color:#fff;padding:10px 24px;border-radius:8px;font-weight:600;opacity:0;transition:opacity 0.3s;pointer-events:none;z-index:10}
 .toast.show{opacity:1}
 .toast.error{background:#e94560}
@@ -106,6 +117,13 @@ input:focus,select:focus{outline:none;border-color:#e94560}
         <div class="value" id="st-uptime">--</div>
       </div>
     </div>
+  </div>
+
+  <div class="card">
+    <h2>History</h2>
+    <ul class="history-list" id="history-list">
+      <li class="history-empty">Loading...</li>
+    </ul>
   </div>
 </div>
 
@@ -194,6 +212,64 @@ function loadAreas() {
   }).catch(function() {});
 }
 
+function loadHistory() {
+  var list = document.getElementById('history-list');
+  fetch('/api/history', {cache: 'no-store'})
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(data) {
+      list.innerHTML = '';
+      var items = [];
+      if (Array.isArray(data)) {
+        items = data;
+      } else if (data && Array.isArray(data.entries)) {
+        items = data.entries;
+      }
+      var debug = (data && data.debug) ? data.debug : null;
+
+      if (items.length === 0) {
+        var msg = 'No recent alerts for this zone';
+        if (debug) {
+          if (debug.error) {
+            msg += ' (' + debug.error + ')';
+          } else if (debug.polled === false) {
+            msg += ' (waiting for first poll)';
+          } else if (debug.http_code !== 200) {
+            msg += ' (HTTP ' + debug.http_code + ')';
+          } else if (debug.bytes_read === 0) {
+            msg += ' (fetch failed)';
+          } else if (!debug.pattern_found) {
+            msg += ' (zone not found in ' + debug.bytes_read + ' bytes)';
+          }
+        }
+        list.innerHTML = '<li class="history-empty">' + msg + '</li>';
+        return;
+      }
+
+      var typeEmoji = {pre_alert: '\u23F3', alert: '\uD83D\uDEA8', end: '\u2705', other: '\u2139\uFE0F'};
+      for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        var li = document.createElement('li');
+        li.className = 'history-item history-type-' + (item.type || 'other');
+        var time = document.createElement('div');
+        time.className = 'history-time';
+        time.textContent = item.date ? item.date.substring(0, 16) : '--';
+        var title = document.createElement('div');
+        title.className = 'history-title';
+        title.textContent = ((typeEmoji[item.type] || '') + ' ' + (item.title || '')).trim();
+        li.appendChild(time);
+        li.appendChild(title);
+        list.appendChild(li);
+      }
+    })
+    .catch(function(err) {
+      list.innerHTML = '<li class="history-empty">Failed to load history</li>';
+      console.error('loadHistory:', err);
+    });
+}
+
 function resetAP() {
   if (!confirm('This will erase WiFi credentials and restart in AP mode. Continue?')) return;
   fetch('/api/reset', {method:'POST'})
@@ -208,7 +284,9 @@ function resetAP() {
 loadAreas();
 loadConfig();
 loadStatus();
+loadHistory();
 setInterval(loadStatus, 3000);
+setInterval(loadHistory, 5000);
 </script>
 </body>
 </html>
